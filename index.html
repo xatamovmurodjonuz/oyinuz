@@ -1,0 +1,684 @@
+<script>
+  // === Telegram foydalanuvchi ===
+  const tg = Telegram.WebApp;
+  const user = tg.initDataUnsafe?.user;
+  if (user) {
+    document.getElementById("userInfo").innerHTML = `👤 ${user.first_name}`;
+  }
+
+  // === localStorage ma'lumotlar ===
+  let coins = parseInt(localStorage.getItem("coins")) || 0;
+  let attempts = parseInt(localStorage.getItem("attempts")) || 0;
+  let matches = parseInt(localStorage.getItem("matches")) || 0;
+  const coinsEl = document.getElementById("coins");
+  const levelEl = document.getElementById("level");
+  const statsEl = document.getElementById("stats");
+
+  function updateCoins(amount) {
+    coins += amount;
+    localStorage.setItem("coins", coins);
+    coinsEl.textContent = coins;
+    updateLevel();
+    if (tg.sendData) {
+      tg.sendData(JSON.stringify({ type: "coin_update", earned: amount }));
+    }
+  }
+
+  function updateLevel() {
+    const level = Math.floor(coins / 10);
+    levelEl.textContent = `🎖️ Daraja: ${level}`;
+  }
+
+  function updateStats() {
+    statsEl.textContent = `🎯 Urinish: ${attempts} | ✅ Moslik: ${matches}`;
+    localStorage.setItem("attempts", attempts);
+    localStorage.setItem("matches", matches);
+  }
+
+  updateCoins(0);
+  updateStats();
+
+  const lastBonus = localStorage.getItem("daily_bonus");
+  const today = new Date().toDateString();
+  if (lastBonus !== today) {
+    updateCoins(10);
+    alert("🎁 Kundalik bonus: 10 tanga!");
+    localStorage.setItem("daily_bonus", today);
+  }
+
+  // === SPIN FUNKSIYASI ===
+  let lastSpinTime = 0;
+  function spin() {
+    const now = Date.now();
+    if (now - lastSpinTime < 5000) {
+      alert("⏳ Kuting! 5 soniyada bir marta spin mumkin.");
+      return;
+    }
+    lastSpinTime = now;
+    const earned = Math.floor(Math.random() * 5) + 1;
+    updateCoins(earned);
+    document.getElementById("spinResult").textContent = `🎉 Siz ${earned} tanga yutdingiz!`;
+  }
+
+  // === KARTA O‘YINI ===
+  const baseEmojis = ["💰", "🪙", "🎁", "🎲", "📦"];
+  let emojis = [...baseEmojis, ...baseEmojis];
+  let shuffled = [], selected = [], matched = [];
+
+  function restartGame() {
+    emojis = [...baseEmojis, ...baseEmojis];
+    shuffled = emojis.sort(() => Math.random() - 0.5);
+    selected = [];
+    matched = [];
+    render();
+  }
+
+  function render() {
+    const gameEl = document.getElementById("game");
+    gameEl.innerHTML = "";
+    shuffled.forEach((item, index) => {
+      const div = document.createElement("div");
+      div.className = "card";
+      if (matched.includes(index)) div.classList.add("matched");
+      div.textContent = matched.includes(index) || selected.includes(index) ? item : "❓";
+      div.onclick = () => handleClick(index);
+      gameEl.appendChild(div);
+    });
+  }
+
+  function handleClick(index) {
+    if (selected.includes(index) || matched.includes(index)) return;
+    selected.push(index);
+    render();
+    if (selected.length === 2) {
+      attempts++;
+      const [i1, i2] = selected;
+      setTimeout(() => {
+        if (shuffled[i1] === shuffled[i2]) {
+          matched.push(i1, i2);
+          matches++;
+          updateCoins(2);
+          handleWin();
+          alert("✅ Barakalla! 2 ta bir xil karta.");
+        } else {
+          playSound('lose');
+          alert("❌ Afsus! Bu kartalar bir xil emas.");
+        }
+        selected = [];
+        updateStats();
+        render();
+      }, 600);
+    }
+  }
+
+  restartGame();
+</script>
+  // === Tez bosish o‘yini ===
+  let count = 0;
+  let timerStarted = false;
+
+  document.getElementById("click-btn").addEventListener("click", () => {
+    if (!timerStarted) {
+      count = 0;
+      timerStarted = true;
+      document.getElementById("click-count").textContent = `Bosishlar: ${count}`;
+      startGame();
+    }
+    if (timerStarted) {
+      count++;
+      document.getElementById("click-count").textContent = `Bosishlar: ${count}`;
+    }
+  });
+
+  let score = 0;
+  let timeLeft = 10;
+  let timer;
+
+  function startGame() {
+    timeLeft = 10;
+    document.getElementById("timer").innerText = `⏱️ Qolgan vaqt: ${timeLeft}s`;
+
+    timer = setInterval(() => {
+      timeLeft--;
+      document.getElementById("timer").innerText = `⏱️ Qolgan vaqt: ${timeLeft}s`;
+      if (timeLeft <= 0) {
+        clearInterval(timer);
+        endGame();
+      }
+    }, 1000);
+  }
+
+  function endGame() {
+    score = count;
+    alert("⏰ Vaqt tugadi! Siz " + count + " marta bosdingiz.");
+    updateRecord(score);
+    playSound('win');
+  }
+
+  function updateRecord(score) {
+    const best = parseInt(localStorage.getItem("record")) || 0;
+    if (score > best) {
+      localStorage.setItem("record", score);
+      alert("🎉 Yangi rekord!");
+    }
+    showRecord();
+  }
+
+  function showRecord() {
+    const best = localStorage.getItem("record") || 0;
+    document.getElementById("record").innerText = `🏆 Rekord: ${best}`;
+  }
+
+  showRecord();
+
+  // === Anti-bot CAPTCHA ===
+  let captchaSolved = false;
+  let correctAnswer = generateCaptcha();
+
+  function generateCaptcha() {
+    const a = Math.floor(Math.random() * 10);
+    const b = Math.floor(Math.random() * 10);
+    document.getElementById("captcha").innerText = `${a} + ${b}`;
+    return a + b;
+  }
+
+  function checkCaptcha() {
+    const userAnswer = parseInt(document.getElementById("captcha_input").value);
+    if (userAnswer === correctAnswer) {
+      captchaSolved = true;
+      alert("✅ CAPTCHA to‘g‘ri!");
+    } else {
+      alert("❌ Noto‘g‘ri. Qayta urinib ko‘ring.");
+      correctAnswer = generateCaptcha();
+    }
+  }
+
+  // === Anti-spam: tez-tez bosishdan saqlash ===
+  let lastClick = 0;
+  let clickDelay = 500;
+
+  function handleClick() {
+    const now = Date.now();
+    if (now - lastClick < clickDelay) {
+      alert("🚫 Juda tez bosilmoqda! Bot emasmisiz?");
+      return;
+    }
+    lastClick = now;
+
+    if (!captchaSolved) {
+      alert("❗ CAPTCHA ni yeching!");
+      return;
+    }
+
+    // ball qo‘shish yoki boshqa harakat
+  }
+
+  // === BONUS ANIMATSIYA ===
+  let winCount = 0;
+
+  function handleWin() {
+    winCount++;
+    playSound(\"win\");
+
+    if (winCount % 5 === 0) {
+      showBonusAnimation();
+    }
+  }
+
+  function showBonusAnimation() {
+    const anim = document.createElement(\"div\");
+    anim.className = \"bonus\";
+    anim.innerText = \"🎁 BONUS!\";
+    document.body.appendChild(anim);
+    setTimeout(() => anim.remove(), 3000);
+  }
+
+  // === Ovozlar ===
+  function playSound(type) {
+    try {
+      if (type === 'win') {
+        document.getElementById(\"win-sound\").play();
+      } else if (type === 'lose') {
+        document.getElementById(\"lose-sound\").play();
+      }
+    } catch (e) {
+      console.error(\"Ovozda xatolik:\", e);
+    }
+  }
+
+  // === Reyting olish (backend) ===
+  async function fetchLeaderboard() {
+    try {
+      const response = await fetch(\"/api/leaderboard\");
+      const data = await response.json();
+      const board = document.getElementById(\"leaderboard\");
+      board.innerHTML = \"<h3>📈 Reyting:</h3>\";
+      data.forEach((player, index) => {
+        board.innerHTML += `<p>${index + 1}. ${player.name} – ${player.score}</p>`;
+      });
+    } catch (e) {
+      console.error(\"Reyting olishda xatolik:\", e);
+    }
+  }
+
+  // === Telegramga statistika yuborish ===
+  async function sendStatsToTelegram(userStats) {
+    try {
+      await fetch(\"https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage\", {
+        method: \"POST\",
+        headers: {
+          \"Content-Type\": \"application/json\",
+        },
+        body: JSON.stringify({
+          chat_id: \"<YOUR_CHAT_ID>\",
+          text: `📊 Yangi Statistika:\\n👤 ${userStats.username}\\n💰 Coin: ${userStats.coins}\\n🏆 Daraja: ${userStats.level}`
+        }),
+      });
+    } catch (e) {
+      console.error(\"Telegramga yuborishda xatolik:\", e);
+    }
+  }
+
+  // === Backendga saqlash ===
+  async function saveToBackend(data) {
+    try {
+      const response = await fetch(\"https://your-api.com/save\", {
+        method: \"POST\",
+        headers: {
+          \"Content-Type\": \"application/json\",
+        },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+      console.log(\"Saqlash natijasi:\", result);
+    } catch (e) {
+      console.error(\"Backendga yuborishda xatolik:\", e);
+    }
+  }
+</script>
+<script>
+// 🔔 Brauzerda bildirishnoma
+function showNotification(title, body) {
+  if (Notification.permission === "granted") {
+    new Notification(title, { body });
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        new Notification(title, { body });
+      }
+    });
+  }
+}
+
+// Misol uchun: g‘alaba qozonsa chaqiring
+// showNotification("🎉 Tabriklaymiz!", "Siz yutdingiz!");
+</script>
+<script>
+// 📤 Telegramga score yuborish
+async function sendScoreToTelegram(score) {
+  try {
+    const response = await fetch("https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: "<YOUR_CHAT_ID>",
+        text: `🏁 Yangi score yuborildi:\n📈 Ball: ${score}`
+      }),
+    });
+    const result = await response.json();
+    console.log("Telegramga yuborildi:", result);
+  } catch (e) {
+    console.error("Telegram yuborishda xatolik:", e);
+  }
+}
+
+// Misol uchun: endGame() ichida chaqiring:
+// sendScoreToTelegram(score);
+</script>
+<script>
+// 🎨 Dark/Light tema almashtirish
+function toggleTheme() {
+  const body = document.body;
+  const current = localStorage.getItem("theme") || "dark";
+  const newTheme = current === "dark" ? "light" : "dark";
+
+  if (newTheme === "light") {
+    body.style.background = "#fff";
+    body.style.color = "#000";
+  } else {
+    body.style.background = "#111";
+    body.style.color = "#fff";
+  }
+
+  localStorage.setItem("theme", newTheme);
+}
+
+// Yozilgan temani yuklash
+window.addEventListener("DOMContentLoaded", () => {
+  const theme = localStorage.getItem("theme") || "dark";
+  if (theme === "light") toggleTheme(); // avtomatik yuklaydi
+});
+</script>
+
+<!-- Tugma qo‘shish uchun HTML'ga qo‘shing: -->
+<!-- <button onclick="toggleTheme()">🎨 Temani almashtirish</button> -->
+<script>
+// 👨‍💻 Admin panelga statistikani yuborish (backend)
+async function sendToAdminPanel(data) {
+  try {
+    const response = await fetch("https://your-backend.com/admin-api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const result = await response.json();
+    console.log("Admin panelga yuborildi:", result);
+  } catch (e) {
+    console.error("Admin panelga yuborishda xatolik:", e);
+  }
+}
+
+// Misol: statistika yuborish
+// sendToAdminPanel({ username: "murodjon", score: 25, level: 3 });
+</script>
+<!-- 🎨 Skin tanlash uchun oddiy form -->
+<div style="margin-top: 20px;">
+  <label>🎨 Fon rangi:</label>
+  <input type="color" id="bgColorPicker" />
+  <label>🔘 Tugma rangi:</label>
+  <input type="color" id="btnColorPicker" />
+  <button onclick="applySkins()">Qo‘llash</button>
+</div>
+
+<script>
+function applySkins() {
+  const bgColor = document.getElementById("bgColorPicker").value;
+  const btnColor = document.getElementById("btnColorPicker").value;
+  document.body.style.background = bgColor;
+  document.querySelectorAll("button").forEach(btn => {
+    btn.style.background = btnColor;
+  });
+  localStorage.setItem("bgColor", bgColor);
+  localStorage.setItem("btnColor", btnColor);
+}
+
+// Saqlangan skinlarni yuklash
+window.addEventListener("DOMContentLoaded", () => {
+  const bg = localStorage.getItem("bgColor");
+  const btn = localStorage.getItem("btnColor");
+  if (bg) document.body.style.background = bg;
+  if (btn) document.querySelectorAll("button").forEach(b => b.style.background = btn);
+});
+</script>
+<script>
+// 🪙 Kundalik bonus
+function dailyReward() {
+  const lastClaim = localStorage.getItem("lastClaim");
+  const today = new Date().toDateString();
+
+  if (lastClaim !== today) {
+    const bonus = 5;
+    let coins = parseInt(localStorage.getItem("coins") || "0");
+    coins += bonus;
+    localStorage.setItem("coins", coins);
+    localStorage.setItem("lastClaim", today);
+    alert(`🎁 Kundalik bonus: ${bonus} coin!`);
+  }
+}
+
+// Kirishda tekshir
+window.addEventListener("DOMContentLoaded", dailyReward);
+</script>
+<script>
+let gameSpeed = 1000; // boshlang‘ich interval (ms)
+
+function increaseDifficulty() {
+  if (gameSpeed > 400) {
+    gameSpeed -= 50; // har yutishda tezlashadi
+    console.log("⏩ O‘yin tezligi oshdi:", gameSpeed);
+    // setInterval orqali ishlayotgan funksiyangiz bo‘lsa, yangilab ishlating
+  }
+}
+
+// Misol: yutganingizda chaqiring
+// increaseDifficulty();
+</script>
+<script>
+let aiPlaying = false;
+
+function toggleAI() {
+  aiPlaying = !aiPlaying;
+  if (aiPlaying) aiMove();
+}
+
+function aiMove() {
+  if (!aiPlaying) return;
+  // Raqib harakati - tasodifiy tugma bosish
+  const buttons = document.querySelectorAll("button");
+  const random = Math.floor(Math.random() * buttons.length);
+  buttons[random].click();
+  setTimeout(aiMove, 2000); // har 2 sekundda harakat
+}
+</script>
+
+<!-- Qo‘shing: -->
+<!-- <button onclick="toggleAI()">🤖 AI-ni yoqish/o‘chirish</button> -->
+<!-- HTML: Qayta boshlash tugmasi -->
+<button id="restartBtn" style="display:none;" onclick="restartGame()">🔄 Qayta o‘ynash</button>
+
+<script>
+function showRestartButton() {
+  const btn = document.getElementById("restartBtn");
+  btn.style.display = "block";
+  btn.classList.add("shake");
+}
+
+function restartGame() {
+  location.reload();
+}
+
+// CSS animatsiya:
+const style = document.createElement("style");
+style.innerHTML = `
+  .shake {
+    animation: shake 0.5s;
+  }
+
+  @keyframes shake {
+    0% { transform: translate(1px, 1px); }
+    25% { transform: translate(-1px, -2px); }
+    50% { transform: translate(2px, 2px); }
+    75% { transform: translate(-1px, 1px); }
+    100% { transform: translate(1px, -1px); }
+  }
+`;
+document.head.appendChild(style);
+
+// Yutqazgan paytda chaqiring:
+// showRestartButton();
+</script>
+<script>
+function checkAchievements() {
+  const wins = parseInt(localStorage.getItem("wins") || "0");
+  const score = parseInt(localStorage.getItem("score") || "0");
+
+  if (wins >= 5) alert("🏅 Yutuq: 5 marta g‘alaba qozondingiz!");
+  if (score >= 10000) alert("🌟 Yutuq: 10 000 ball to‘pladingiz!");
+}
+
+// Har g‘alabadan keyin chaqiring:
+// let wins = parseInt(localStorage.getItem("wins") || "0") + 1;
+// localStorage.setItem("wins", wins);
+// checkAchievements();
+</script>
+<script>
+  function checkDailyQuest() {
+    const today = new Date().toDateString();
+    const lastPlayed = localStorage.getItem('lastPlayedDate');
+
+    if (lastPlayed !== today) {
+      localStorage.setItem('lastPlayedDate', today);
+      localStorage.setItem('dailyQuestProgress', 0);
+      alert("🎯 Bugungi missiya: 5 ta o‘yinda yut!");
+    }
+  }
+
+  function updateDailyQuest() {
+    let progress = parseInt(localStorage.getItem('dailyQuestProgress') || '0');
+    progress++;
+    localStorage.setItem('dailyQuestProgress', progress);
+
+    if (progress === 5) {
+      alert("🏆 Missiyani bajardingiz! +10 coin");
+      let coins = parseInt(localStorage.getItem("coins") || "0");
+      coins += 10;
+      localStorage.setItem("coins", coins);
+      updateStats(); // mavjud funksiyani chaqiring agar bor bo‘lsa
+    }
+  }
+
+  checkDailyQuest();
+</script>
+<script>
+  function addXP(amount) {
+    let xp = parseInt(localStorage.getItem("xp") || "0");
+    xp += amount;
+    localStorage.setItem("xp", xp);
+
+    let level = Math.floor(xp / 100);
+    localStorage.setItem("level", level);
+
+    document.getElementById("xp").textContent = xp;
+    document.getElementById("level").textContent = level;
+
+    if (xp % 100 === 0) {
+      alert(`🎉 ${level}-darajaga chiqdingiz! +5 coin bonus`);
+      let coins = parseInt(localStorage.getItem("coins") || "0");
+      coins += 5;
+      localStorage.setItem("coins", coins);
+      updateStats();
+    }
+  }
+</script>
+<!-- HTML Telegram login tugmasi -->
+<script async src="https://telegram.org/js/telegram-widget.js?7"
+        data-telegram-login="your_bot_username"  <!-- o‘rniga bot username yozing -->
+        data-size="large"
+        data-userpic="false"
+        data-request-access="write"
+        data-onauth="onTelegramAuth(user)">
+</script>
+
+<script>
+  function onTelegramAuth(user) {
+    alert("👋 Salom, " + user.first_name + "!");
+    // Serverga ma’lumot jo‘natish kerak bo‘ladi
+    // fetch('/save-user', { method: 'POST', body: JSON.stringify(user), ... })
+  }
+</script>
+<script>
+  const skins = {
+    default: { background: "#111", button: "#333", text: "#fff" },
+    neon: { background: "#000", button: "#00ffff", text: "#0ff" },
+    gold: { background: "#332200", button: "#ffd700", text: "#fff8dc" }
+  };
+
+  function applySkin(skinName) {
+    const skin = skins[skinName] || skins.default;
+    document.body.style.background = skin.background;
+    document.body.style.color = skin.text;
+    document.querySelectorAll("button").forEach(btn => {
+      btn.style.background = skin.button;
+      btn.style.color = skin.text;
+    });
+    localStorage.setItem("skin", skinName);
+  }
+
+  function unlockSkin(skinName, cost) {
+    let coins = parseInt(localStorage.getItem("coins") || "0");
+    if (coins >= cost) {
+      coins -= cost;
+      localStorage.setItem("coins", coins);
+      localStorage.setItem(`unlocked_${skinName}`, true);
+      alert(`✅ ${skinName} skin ochildi!`);
+      applySkin(skinName);
+      updateStats();
+    } else {
+      alert("❌ Coin yetarli emas!");
+    }
+  }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    const savedSkin = localStorage.getItem("skin") || "default";
+    applySkin(savedSkin);
+  });
+</script>
+            <!-- === YANGI FUNKSIYALAR TUGMALARI === -->
+<div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+  <button onclick="askNotificationPermission()">🔔 Bildirishnoma</button>
+  <button onclick="shareScore()">📤 Telegramga yuborish</button>
+  <button onclick="toggleTheme()">🎨 Temani almashtirish</button>
+  <a href="/admin" target="_blank">
+    <button>👨‍💻 Admin Panel</button>
+  </a>
+</div>
+
+<!-- === CSS: Dark mode === -->
+<style>
+  body.dark-theme {
+    background-color: #111;
+    color: #fff;
+  }
+
+  body.dark-theme button {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #888;
+  }
+</style>
+
+<!-- === JS FUNKSIYALAR === -->
+<script>
+  // 🔔 Bildirishnoma ruxsatini so‘rash
+  function askNotificationPermission() {
+    if (!("Notification" in window)) {
+      alert("Brauzeringiz bildirishnomalarni qo‘llab-quvvatlamaydi.");
+    } else if (Notification.permission !== "granted") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          new Notification("✅ Ruxsat berildi! Endi xabarnomalar yuboriladi.");
+        }
+      });
+    }
+  }
+
+  // 🔔 Bildirishnoma yuborish
+  function sendNotification(title, body) {
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+    }
+  }
+
+  // ⏰ O‘yin tugagach yuborish uchun sendNotification() dan foydalaning:
+  // Misol:
+  /*
+  function endGame() {
+    alert("O‘yin tugadi!");
+    sendNotification("O‘yin tugadi!", "Siz rekord o‘rnatdingiz!");
+  }
+  */
+
+  // 📤 Telegramga rekord yuborish
+  function shareScore() {
+    const score = localStorage.getItem("record") || 0;
+    const text = encodeURIComponent(`🏆 Mening rekordim: ${score} marta!`);
+    const url = `https://t.me/share/url?url=&text=${text}`;
+    window.open(url, "_blank");
+  }
+
+  // 🎨 Tungi/oq temani almashtirish
+  function toggleTheme() {
+    document.body.classList.toggle("dark-theme");
+  }
+</script>
